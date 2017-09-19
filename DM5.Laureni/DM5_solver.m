@@ -4,9 +4,14 @@
 %options = odeset('RelTol',10e-6,'AbsTol',10e-6,'OutputFcn',@odeplot); %Solver options
 init = [20,0,0,0,300,300]; %Initial conditions
 
+%Decay rates
+bA = 0;
+bN = 0;
+
 %Nitrogen incorporation
 iNa = 0;
 iNn = 0;
+iNx = 0;
 
 %AMX concentration dependent on rAMX
 rAmx = 86; %mg/L/d
@@ -20,8 +25,8 @@ DO = 1.5;
 WAS = 5e-3;
 Bret = 1-WAS;
 
-params = [0.297,0.337,0.017,2.4,0.5,0.6,0.4,0.03,0.005,0.18,0.08,0.17,0.083,0.083,0.058,iNa,iNn,DO,XAmx]; %Growth parameters and fixed state values (O2 and AMX)
-tspan = [0,400];
+params = [0.297,0.337,0.017,2.4,0.5,0.6,0.4,0.03,0.005,0.18,0.08,0.17,iNa,iNn,iNx,bA,bN,DO,XAmx]; %Growth parameters and fixed state values (O2 and AMX)
+tspan = [0,150];
 
 s1in = 20;
 s2in = 0;
