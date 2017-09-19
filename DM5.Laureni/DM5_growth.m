@@ -3,8 +3,9 @@ function [ outS ] = DM5_growth(t,init,params)
 %Syntax: DM5_growth(t,init,params)
 %   Complete model of hybrid MBBR partial nitritation and Anammox;
 %   Original model developed by Laureni et al. (2017). 
-%   M.J. Wade, T. Meadows (McMaster University)
+%   M.J. Wade, T. Meadows, T.-H. Hsu (McMaster University)
 %   Created: 7th September, 2017
+%   Amended: 18th September, 2017 (M. Wade)
 
 %Parameters
 muA = params(1); %Max Specific Growth Rate (AOB) 1/d
@@ -46,7 +47,7 @@ ds1 = -(1/YA+iA)*mu1*x1 - iN*mu2*x2 - (1/YX + iX)*mu3*x3 + iA*bA*x1 + iN*bN*x2; 
 
 ds2 = 1/YA*mu1*x1 - 1/YN*mu2*x2 - (1/YX+1/1.14)*mu3*x3; %NO2-
 
-ds3 = -1/YN*mu2*x2 + 1/1.14*mu3*x3; %NO3-
+ds3 = 1/YN*mu2*x2 + 1/1.14*mu3*x3; %NO3-
 
 ds4 = 2/YX*mu3*x3; %N2
 
