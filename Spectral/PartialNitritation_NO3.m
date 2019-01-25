@@ -33,11 +33,11 @@ t=0;
 
 
 %% Numerical Settings
-tmax= T; tplot = 0.001;         % Maxtime and plot times.
+tmax= T; tplot = T/1000;         % Maxtime and plot times.
 nplots = round(tmax/dt);        % # of iterations for timestepping
 plotgap = round(tplot/dt);      % Gap between saving points for plotting
 dt = tplot/plotgap;             % Timestep
-tol = 1E-10;                     % Tolerance for the BVP
+tol = 1E-9;                     % Tolerance for the BVP
 
 %% Response Functions & Respiration Rates
 muaO = @(y) y./(kaO2+y); % Oxygen consumption by AOB
