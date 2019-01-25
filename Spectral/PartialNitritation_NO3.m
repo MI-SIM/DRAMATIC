@@ -37,22 +37,24 @@ tmax= T; tplot = 0.001;         % Maxtime and plot times.
 nplots = round(tmax/dt);        % # of iterations for timestepping
 plotgap = round(tplot/dt);      % Gap between saving points for plotting
 dt = tplot/plotgap;             % Timestep
-tol = 1E-6;                     % Tolerance for the BVP
+tol = 1E-10;                     % Tolerance for the BVP
 
 %% Response Functions & Respiration Rates
 muaO = @(y) y./(kaO2+y); % Oxygen consumption by AOB
 munO = @(y) y./(knO2+y); % Oxygen consumption by NOB
 mua = @(y,z) muamax*y./(kaNH4+y).*muaO(z); % Ammonium consumption by AOB
 mun = @(y,z) munmax*y./(knNO2+y).*munO(z); % Nitrite consumption by NOB
-Rxa = @(y,z) mua(y,z)-(1+eta)*ba*muaO(z); % 
-Rxn = @(y,z) mun(y,z)-(1+eta)*bn*munO(z); % 
+Rxa = @(y,z) mua(y,z)-muamax*(1+eta)*ba*muaO(z); % 
+Rxn = @(y,z) mun(y,z)-munmax*(1+eta)*bn*munO(z); % 
+mui = @(xa,xn,y) (fxi+eta)*(ba*xa.*muaO(y)+bn*xn.*munO(y));
+Rf = @(C,F) F(:,1).*Rxa(C(:,1),C(:,3))+F(:,2).*Rxn(C(:,2),C(:,3))+mui(F(:,1),F(:,2),C(:,3));
 %% Biofilm Velocities and transport flux
 function w = v(C,~,F) % biofilm velocity 
-    w = 1/2*int*(F(:,1).*mua(C(:,1),C(:,3))+F(:,2).*mun(C(:,2),C(:,3)));
+    w = int*(Rf(C,F));
 end
 function w = Lp(C,S,F) % L prime
         vel = v(C,S,F);
-        w = vel(1)*S(6)+alpha/(A*rho)*(S(3)+S(4)+S(5))-E*S(6)^2;
+        w = 0.5*vel(1)*S(6)+alpha/(A*rho)*(S(3)+S(4)+S(5))-E*S(6)^2;
 end
         
 
@@ -83,9 +85,10 @@ end
     function w = transport(C,S,F)
     % Transport equations
             vel = v(C,S,F);
-            fat = F(:,1).*Rxa(C(:,1),C(:,3))+(2+(x+1)*Lp(C,S,F)).*Dx*(F(:,1).*vel*S(6));
-            fnt = F(:,2).*Rxn(C(:,2),C(:,3))+(2+(x+1)*Lp(C,S,F)).*Dx*(F(:,2).*vel*S(6));
-            fit = (fxi+eta)*(ba*F(:,1).*muaO(C(:,3))+bn*F(:,2).*munO(C(:,3)))+(2+(x+1)*Lp(C,S,F)).*Dx*(F(:,3).*vel*S(6));
+            vp = Rf(C,F);
+            fat = F(:,1).*Rxa(C(:,1),C(:,3))-F(:,1).*vp+(x-1)*(Lp(C,S,F)/S(6)).*Dx*F(:,1)-vel.*(Dx*F(:,1));
+            fnt = F(:,2).*Rxn(C(:,2),C(:,3))-F(:,2).*vp+(x-1)*(Lp(C,S,F)/S(6)).*Dx*F(:,2)-vel.*(Dx*F(:,2));
+            fit = mui(F(:,1),F(:,2),C(:,3))-F(:,3).*vp+(x-1)*(Lp(C,S,F)/S(6)).*Dx*F(:,3)-vel.*(Dx*F(:,3));
             w = [fat,fnt,fit];
         end
 %% Planktonic Equations
@@ -99,7 +102,7 @@ end
     JNH4 = S(6)/2*rho*int*(mua(C(:,1),C(:,3)).*F(:,1)/ya)/dNH4; 
     JNO2 = S(6)/2*rho*int*(mun(C(:,2),C(:,3)).*F(:,2)/yn -mua(C(:,1),C(:,3)).*F(:,1)/ya)/dNO2;
     %JNO3 = S(6)/2*rho*int*(mun(C(:,2),C(:,3)).*F(:,2)/yn)/dNO3;
-    % Main function and RK4;
+    % Main function;
     w = [d*(SNH4in-S(1))-1/V*(1/ya*mua(S(1),SO2)*S(3))-1/V*A*dNH4*JNH4(1);
          d*(SNO2in-S(2))-1/V*(1/yn*mun(S(2),SO2)*S(4)-1/ya*mua(S(1),SO2)*S(3))-1/V*A*dNO2*JNO2(1);
          S(3)*(mua(S(1),SO2)-d-alpha)+A*rho*F(1,1)*E*S(6)^2;
@@ -111,7 +114,7 @@ end
 % Planktonic
   SNO2 = SNO2in; SNH4 = SNH4in ;   % Substrates
   SO2 = SO2in ; %SNO3 = SNO3in;
-  Xa = 20E-6;  Xn = 20E-3; Xi = 0;  % Biomass
+  Xa = 20E-6;  Xn = 20E-6; Xi = 0;  % Biomass
   L = 1E-5;
   S = [SNH4;SNO2;Xa;Xn;Xi;L];
 % Biofilm
@@ -124,9 +127,9 @@ end
 %% Set storage
 SS = S'; tt = 0;
 fafa = fa'; fnfn=fn';
-fifi = fi'; CNH4C= CNH4';
-CNO2C = CNO2';% CNO3C= CNO3';
-CO2C = CO2';
+fifi = fi'; CNH4C= C(:,1)';
+CNO2C = C(:,2)';% CNO3C= CNO3';
+CO2C = C(:,3)';
 reverseStr = '';
 %% Main Timestepping Loop
   for i = 1:nplots
