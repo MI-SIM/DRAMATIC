@@ -24,7 +24,8 @@ ba = 0.04; bn = 0.08;
 [D,x] = cheb(N);                                        % Chebyshev Differentiation Matrix
 Dx= D; Dx(N+1,:) = zeros(N+1,1);                          % For the Neumann B.C. x(end) -> z=0
 D2 = D^2; D2(N+1,:) = D(N+1,:); D2 = D2(2:N+1,2:N+1);   % Also for the Neumann B.C.
-eps = 0.01; dt = min([10e-6,N^(-4)/eps]);                 % timestep dependent on N
+eps = 0.01; %dt = min([10e-6,N^(-4)/eps]);                 % timestep dependent on N
+dt=0.001;
 t=0;
 % Chebyshev integration matrix:
 % Sl is the indefinite integral from x to 1,
@@ -33,11 +34,28 @@ t=0;
 
 
 %% Numerical Settings
-tmax= T; tplot = T/1000;         % Maxtime and plot times.
+tmax= T; points=9000;           % Maxtime and number of save points.
+tplot = T/points;               % plot times
 nplots = round(tmax/dt);        % # of iterations for timestepping
 plotgap = round(tplot/dt);      % Gap between saving points for plotting
 dt = tplot/plotgap;             % Timestep
 tol = 1E-9;                     % Tolerance for the BVP
+
+%% Exponential time differencing setup
+M = 32; r = 15*exp(1i*pi*((1:M)-.5)/M); h=dt;
+A1 = h*zeros(N+1); E1 = eye(N+1); E2 = eye(N+1);
+I = eye(N+1); Z = zeros(N+1);
+f1 = Z; f2 = Z; f3= Z; Q = Z;
+for j = 1:M
+    z = r(j);
+    zIA = inv(z*I);
+    Q = Q+h*zIA*(exp(z/2)-1);
+    f1 = f1+h*zIA*(-4-z+exp(z)*(4-3*z+z^2))/z^2;
+    f2 = f2+h*zIA*(2+z+exp(z)*(z-2))/z^2;
+    f3 = f3+h*zIA*(-4-3*z-z*2+exp(z)*(4-z))/z^2;
+end
+f1 = real(f1/M); f2 = real(f2/M); f3 = real(f3/M); Q = real(Q/M);
+
 
 %% Response Functions & Respiration Rates
 muaO = @(y) y./(kaO2+y); % Oxygen consumption by AOB
@@ -62,7 +80,7 @@ end
   function w = biofilmbvp(C,S,F)
     %CNH4 = C(:,1); CNO2 = C(:,2); CNO3 = C(:,3); CO2 = C(:,4);
     %SNH4 = S(1); SNO2=S(2); SNO3 = S(3); L = S(7);
-    %fa = F(:,1); fn = F(:,2); fi = F(:,3);
+    %fa = F(:,1); fn = F(:,2); fi = F(:,3); 
     change = 1;
       function w = RDE(C,S,F)
         factor= S(6)^2/4;
@@ -124,40 +142,53 @@ end
   fa = 0.5*ones(size(x)); fn = 0.5*ones(size(x)); fi = zeros(size(x));
   F = [fa,fn,fi];
   C = biofilmbvp(C,S,F);
-%% Set storage
-SS = S'; tt = 0;
-fafa = fa'; fnfn=fn';
-fifi = fi'; CNH4C= C(:,1)';
-CNO2C = C(:,2)';% CNO3C= CNO3';
-CO2C = C(:,3)';
+%% Set storage, preallocate size for speed
+SS = zeros(6,points); tt = zeros(1,points);
+fafa = zeros(N+1,points); fafa(:,1)=fa;
+fnfn = zeros(N+1,points); fnfn(:,1)=fn;
+fifi = zeros(N+1,points); fifi(:,1)=fi;
+CNH4C = zeros(N+1,points); CNH4C(:,1) = C(:,1);
+CNO2C = zeros(N+1,points); CNO2C(:,1) = C(:,2);
+%CNO3C = zeros(N+1,points); CNO3C(:,1) = CNO3';
+CO2C = zeros(N+1,points); CO2C(:,1) = C(:,3);
 reverseStr = '';
+
+%% time stepping function
+%% Using the exponential timestepping method outlined in KassamTrefethen (2005);
+    function [S,F] = timestep(C,S,F)
+        Sk1 = planktonic(C,S,F);
+        Nu = transport(C,S,F);
+        a = F+Q*Nu;
+        Sk2 = planktonic(C,S+0.5*dt*Sk1,a);
+        Na = transport(C,S+0.5*dt*Sk1,a);
+        b = F+Q*Na;
+        Sk3= planktonic(C,S+0.5*dt*Sk2,b);
+        Nb = transport(C,S+0.5*dt*Sk2,b);
+        c = a+Q*(2*Nb-Nu);
+        Sk4 = planktonic(C,S+dt*Sk3,c);
+        Nc = transport(C,S+dt*Sk3,c);
+        S = S+dt/6*(Sk1+2*Sk2+2*Sk3+Sk4);
+        F = E1*F+f1*Nu+2*f2*(Na+Nb)+f3*Nc;
+    end
+        
+        
 %% Main Timestepping Loop
   for i = 1:nplots
     % Save into temporary Storage
-    Ct = biofilmbvp(C,S,F); 
     t= t+dt;
-    % RK4 Step
-      Sk1 = planktonic(C,S,F);
-      Fk1 = transport(C,S,F);
-      Sk2 = planktonic(C,S+0.5*dt*Sk1,F+0.5*dt*Fk1);
-      Fk2 = transport(C,S+0.5*dt*Sk1,F+0.5*dt*Fk1);
-      Sk3 = planktonic(C,S+0.5*dt*Sk2,F+0.5*dt*Fk2);
-      Fk3 = transport(C,S+0.5*dt*Sk2,F+0.5*dt*Fk2);
-      Sk4 = planktonic(C,S+dt*Sk3,F+dt*Fk3);
-      Fk4 = transport(C,S+dt*Sk3,F+dt*Fk3);
-    % Update variables
-    S = S + dt/6*(Sk1+2*Sk2+2*Sk3+Sk4);
+    Ct = biofilmbvp(C,S,F); 
+    [S,F] = timestep(Ct,S,F);
     C = Ct;
-    F = F + dt/6*(Fk1+2*Fk2+2*Fk3+Fk4);
     %% Save the data sometimes 
     if mod(i,plotgap)==0
-      tt = [tt;t]; SS = [SS;S'];
-      fafa = [fafa;F(:,1)']; fnfn = [fnfn;F(:,2)'];
-      fifi = [fifi;F(:,3)'];
-      CNH4C = [CNH4C;C(:,1)']; CNO2C=[CNO2C;C(:,2)'];
-      CO2C = [CO2C;C(:,3)'];   %CNO3C = [CNO3C;C(:,4)']; 
+      j = i/plotgap+1;
+      tt(j) = t ; SS(:,j) = S;
+      fafa(:,j) = F(:,1); fnfn(:,j) = F(:,2);
+      fifi(:,j) = F(:,3);
+      CNH4C(:,j) = C(:,1); CNO2C(:,j) = C(:,2);
+      CO2C(:,j) = C(:,3);   %CNO3C = [CNO3C;C(:,4)']; 
       percentDone = 100 * i/nplots;
-      msg = sprintf('Percent done: %3.1f', percentDone); %Don't forget this semicolon
+      msg = sprintf('Percent done: %3.3f', percentDone); %Don't forget this semicolon
       fprintf([reverseStr, msg]);
       reverseStr = repmat(sprintf('\b'), 1, length(msg));
     end
