@@ -26,7 +26,7 @@ ia = 0.07; ii = 0.02;
 Dx= D; Dx(N+1,:) = zeros(N+1,1);                          % For the Neumann B.C. x(end) -> z=0
 D2 = D^2; D2(N+1,:) = D(N+1,:); D2 = D2(2:N+1,2:N+1);   % Also for the Neumann B.C.
 eps = 0.01; %dt = min([10e-6,N^(-4)/eps]);                 % timestep dependent on N
-dt=0.001;
+dt=0.005;
 t=0;
 % Chebyshev integration matrix:
 % Sl is the indefinite integral from x to 1,
@@ -40,54 +40,65 @@ tplot = T/points;               % plot times
 nplots = round(tmax/dt);        % # of iterations for timestepping
 plotgap = round(tplot/dt);      % Gap between saving points for plotting
 dt = tplot/plotgap;             % Timestep
-tol = 1E-9;                     % Tolerance for the BVP
+tol = 1E-12;                     % Tolerance for the BVP
 
 %% Exponential time differencing setup
-M = 32; r = 15*exp(1i*pi*((1:M)-.5)/M); h=dt;
-A1 = h*zeros(N+1); E1 = eye(N+1); E2 = eye(N+1);
-I = eye(N+1); Z = zeros(N+1);
-f1 = Z; f2 = Z; f3= Z; Q = Z;
-for j = 1:M
-    z = r(j);
-    zIA = inv(z*I);
-    Q = Q+h*zIA*(exp(z/2)-1);
-    f1 = f1+h*zIA*(-4-z+exp(z)*(4-3*z+z^2))/z^2;
-    f2 = f2+h*zIA*(2+z+exp(z)*(z-2))/z^2;
-    f3 = f3+h*zIA*(-4-3*z-z*2+exp(z)*(4-z))/z^2;
-end
-f1 = real(f1/M); f2 = real(f2/M); f3 = real(f3/M); Q = real(Q/M);
-
+% For Transport PDE
+    M = 32; r = 15*exp(1i*pi*((1:M)-.5)/M); h=dt;
+    A1 = h*zeros(N+1); E1 = eye(N+1); E2 = eye(N+1);
+    I = eye(N+1); Z = zeros(N+1);
+    fU1 = Z; fU2 = Z; fU3= Z; QU = Z;
+    for j = 1:M
+        z = r(j);
+        zIA = inv(z*I);
+        QU = QU+h*zIA*(exp(z/2)-1);
+        fU1 = fU1+h*zIA*(-4-z+exp(z)*(4-3*z+z^2))/z^2;
+        fU2 = fU2+h*zIA*(2+z+exp(z)*(z-2))/z^2;
+        fU3 = fU3+h*zIA*(-4-3*z-z*2+exp(z)*(4-z))/z^2;
+    end
+    fU1 = real(fU1/M); fU2 = real(fU2/M); fU3 = real(fU3/M); QU = real(QU/M);
+% For the ODEs:
+    FS1 = 0; FS2=0; FS3=0; QS=0;
+    for j = 1:M
+        z = r(j);
+        zIA = 1/z;
+        QS = QS +h*zIA*(exp(z/2)-1);
+        FS1 = FS1+h*zIA*(-4-z+exp(z)*(4-3*z+z^2))/z^2;
+        FS2 = FS2+h*zIA*(2+z+exp(z)*(z-2))/z^2;
+        FS3 = FS3+h*zIA*(-4-3*z-z*2+exp(z)*(4-z))/z^2;
+    end
+    FS1 = real(FS1/M); FS2 = real(FS2/M); FS3 = real(FS3/M); QS=real(QS/M);
 
 %% Response Functions & Respiration Rates
 muaO = @(y) y./(kaO2+y); % Oxygen consumption by AOB
 munO = @(y) y./(knO2+y); % Oxygen consumption by NOB
 mua = @(y,z) muamax*y./(kaNH4+y).*muaO(z); % Ammonium consumption by AOB
 mun = @(y,z) munmax*y./(knNO2+y).*munO(z); % Nitrite consumption by NOB
-Rxa = @(y,z) mua(y,z)-muamax*(1+eta)*ba*muaO(z); % 
-Rxn = @(y,z) mun(y,z)-munmax*(1+eta)*bn*munO(z); % 
-mui = @(xa,xn,y) (fxi+eta)*(ba*xa.*muaO(y)+bn*xn.*munO(y));
-Rf = @(C,F) F(:,1).*Rxa(C(:,1),C(:,3))+F(:,2).*Rxn(C(:,2),C(:,3))+mui(F(:,1),F(:,2),C(:,3));
+Rxa = @(y,z) mua(y,z)-muamax*(1+eta)*ba*muaO(z); % Called mu_a in the paper
+Rxn = @(y,z) mun(y,z)-munmax*(1+eta)*bn*munO(z); % Called mu_n in the paper
+mui = @(xa,xn,y) (fxi+eta)*(ba*xa.*muaO(y)+bn*xn.*munO(y)); % Reaction term in inert biomass equation
+Rf = @(C,F) F(:,1).*Rxa(C(:,1),C(:,3))+F(:,2).*Rxn(C(:,2),C(:,3))+mui(F(:,1),F(:,2),C(:,3)); % Sum of biomass reactions
 %% Biofilm Velocities and transport flux
 function w = v(C,~,F) % biofilm velocity 
     w = int*(Rf(C,F));
 end
 function w = Lp(C,S,F) % L prime
         vel = v(C,S,F);
-        w = 0.5*vel(1)*S(6)+alpha/(A*rho)*(S(3)+S(4)+S(5))-E*S(6)^2;
+        w = S(6)/2*vel(1)+alpha/(A*rho)*(S(3)+S(4)+S(5))-E*S(6)^2;
 end
-        
-
 %% Biofilm Substrate Update Function
 % Biofilm Substrate equations
 function w = RDE(C,S,F)
         % Factor from change of variables
         dz= S(6)^2/4;
         % Terms in NH4 equation
-            RNH4a = (1/ya +ia)*mua(C(2:N+1),C(2:N+1,3));
+            RNH4a = (1/ya+ia)*mua(C(2:N+1,1),C(2:N+1,3));
             RNH4b = (ia-ii*fxi)*ba*muaO(C(2:N+1,3));
             RNH4n = ia*mun(C(2:N+1,2),C(2:N+1,3));
             RNH4m = (ia-ii*fxi)*bn*munO(C(2:N+1,3));
-        RDENH4 = (dz/dNH4)*((RNH4a-RNH4b).*F(2:N+1,1)*rho+(RNH4n-RNH4m).*F(2:N+1,2));
+        RDENH4 =  (dz/dNH4)*((RNH4a-RNH4b).*F(2:N+1,1)*rho+(RNH4n-RNH4m).*F(2:N+1,2)*rho);
+        % NH4 equation, no i_i's
+        % RDENH4 = (dz/dNH4)*(1/ya)*mua(C(2:N+1,
         % Terms in NO2 equation
             RNO2a = 1/ya*mua(C(2:N+1,1),C(2:N+1,3));
             RNO2n = 1/yn*mun(C(2:N+1,2),C(2:N+1,3));
@@ -129,20 +140,22 @@ function w = biofilmbvp(C,S,F)
         end
 %% Planktonic Equations
     function w = planktonic(C,S,F)
-    %CNH4 = C(:,1); CNO2 = C(:,2); CO2 = C(:,3); CNO3 = C(:,4);
-    %SNH4 = S(1); SNO2=S(2); SNO3 = S(3);
-    %Xa = S(4); Xn = S(5); Xi = S(6); L = S(7);
+    %CNH4 = C(:,1); CNO2 = C(:,2); CO2 = C(:,3);
+    %SNH4 = S(1); SNO2=S(2);
+    %Xa = S(3); Xn = S(4); Xi = S(5); L = S(6);
     %fa = F(:,1); fn = F(:,2); fi = F(:,3);
     % Biofilm Velocity and Flux Equations
-    %vel = v(C,S,F);
     JNH4 = S(6)/2*rho*int*(mua(C(:,1),C(:,3)).*F(:,1)/ya)/dNH4; 
-    JNO2 = S(6)/2*rho*int*(mun(C(:,2),C(:,3)).*F(:,2)/yn -mua(C(:,1),C(:,3)).*F(:,1)/ya)/dNO2;
-    %JNO3 = S(6)/2*rho*int*(mun(C(:,2),C(:,3)).*F(:,2)/yn)/dNO3;
-    % Main function;
-    w = [d*(SNH4in-S(1))-1/V*(1/ya*mua(S(1),SO2)*S(3))-1/V*A*dNH4*JNH4(1);
+    JNO2 = S(6)/2*rho*int*(mun(C(:,2),C(:,3)).*F(:,2)/yn-mua(C(:,1),C(:,3)).*F(:,1)/ya)/dNO2;
+    % Pieces of SNH4 Equation
+        RNH4a =(1/ya+ia)*mua(S(1),SO2); 
+        RNH4b =(ia-ii*fxi)*muaO(SO2);
+        RNH4n =ia*mun(S(2),SO2);
+        RNH4m =(ia-ii*fxi)*munO(SO2);
+    w = [d*(SNH4in-S(1))-1/V*((RNH4a-RNH4b)*S(3)+(RNH4n-RNH4m)*S(4))-1/V*A*dNH4*JNH4(1);
          d*(SNO2in-S(2))-1/V*(1/yn*mun(S(2),SO2)*S(4)-1/ya*mua(S(1),SO2)*S(3))-1/V*A*dNO2*JNO2(1);
-         S(3)*(mua(S(1),SO2)-d-alpha)+A*rho*F(1,1)*E*S(6)^2;
-         S(4)*(mun(S(2),SO2)-d-alpha)+A*rho*F(1,2)*E*S(6)^2;
+         S(3)*(Rxa(S(1),SO2)-d-alpha)+A*rho*F(1,1)*E*S(6)^2;
+         S(4)*(Rxn(S(2),SO2)-d-alpha)+A*rho*F(1,2)*E*S(6)^2;
          mui(S(3),S(4),SO2)-S(5)*(d+alpha)+A*rho*F(1,3)*E*S(6)^2;
          Lp(C,S,F)];
     end
@@ -150,8 +163,8 @@ function w = biofilmbvp(C,S,F)
 % Planktonic
   SNO2 = SNO2in; SNH4 = SNH4in ;   % Substrates
   SO2 = SO2in ; %SNO3 = SNO3in;
-  Xa = 20E-6;  Xn = 20E-6; Xi = 0;  % Biomass
-  L = 1E-5;
+  Xa = 2E-6;  Xn = 2E-6; Xi = 0;  % Biomass
+  L = 1E-6;
   S = [SNH4;SNO2;Xa;Xn;Xi;L];
 % Biofilm
   CO2 = SO2*ones(size(x));   CNO2 = SNO2*ones(size(x));
@@ -173,21 +186,24 @@ CO2C = zeros(N+1,points); CO2C(:,1) = C(:,3);
 reverseStr = '';
 
 %% time stepping function
-%% Using the exponential timestepping method outlined in KassamTrefethen (2005);
+% Using the exponential timestepping method outlined in KassamTrefethen (2005);
     function [S,F] = timestep(C,S,F)
-        Sk1 = planktonic(C,S,F);
+        NSu = planktonic(C,S,F);
         Nu = transport(C,S,F);
-        a = F+Q*Nu;
-        Sk2 = planktonic(C,S+0.5*dt*Sk1,a);
-        Na = transport(C,S+0.5*dt*Sk1,a);
-        b = F+Q*Na;
-        Sk3= planktonic(C,S+0.5*dt*Sk2,b);
-        Nb = transport(C,S+0.5*dt*Sk2,b);
-        c = a+Q*(2*Nb-Nu);
-        Sk4 = planktonic(C,S+dt*Sk3,c);
-        Nc = transport(C,S+dt*Sk3,c);
-        S = S+dt/6*(Sk1+2*Sk2+2*Sk3+Sk4);
-        F = E1*F+f1*Nu+2*f2*(Na+Nb)+f3*Nc;
+        au = F+QU*Nu;
+        as = S+QS*NSu;
+        NSa = planktonic(C,as,au);
+        Na = transport(C,as,au);
+        bu = F+QU*Na;
+        bs = S+QS*NSa;
+        NSb= planktonic(C,bs,bu);
+        Nb = transport(C,bs,bu);
+        cu = au+QU*(2*Nb-Nu);
+        cs = as+QS*(2*NSb-NSu);
+        NSc = planktonic(C,cs,cu);
+        Nc = transport(C,cs,cu);
+        S = S+FS1*NSu+2*FS2*(NSa+NSb)+FS3*NSc;
+        F = E1*F+fU1*Nu+2*fU2*(Na+Nb)+fU3*Nc;
     end
         
         
