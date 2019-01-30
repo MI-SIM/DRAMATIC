@@ -18,6 +18,7 @@ SNO2in = 0;
 SNH4in = 30; SO2in = 5;
 fxi = 0.1;  eta = 0.5;
 ba = 0.04; bn = 0.08;
+ia = 0.07; ii = 0.02;
 
 
 %% Discretization of domain; 
@@ -77,18 +78,35 @@ end
         
 
 %% Biofilm Substrate Update Function
-  function w = biofilmbvp(C,S,F)
+% Biofilm Substrate equations
+function w = RDE(C,S,F)
+        % Factor from change of variables
+        dz= S(6)^2/4;
+        % Terms in NH4 equation
+            RNH4a = (1/ya +ia)*mua(C(2:N+1),C(2:N+1,3));
+            RNH4b = (ia-ii*fxi)*ba*muaO(C(2:N+1,3));
+            RNH4n = ia*mun(C(2:N+1,2),C(2:N+1,3));
+            RNH4m = (ia-ii*fxi)*bn*munO(C(2:N+1,3));
+        RDENH4 = (dz/dNH4)*((RNH4a-RNH4b).*F(2:N+1,1)*rho+(RNH4n-RNH4m).*F(2:N+1,2));
+        % Terms in NO2 equation
+            RNO2a = 1/ya*mua(C(2:N+1,1),C(2:N+1,3));
+            RNO2n = 1/yn*mun(C(2:N+1,2),C(2:N+1,3));
+        RDENO2 = (dz/dNO2)*(RNO2n.*F(2:N+1,2)*rho-RNO2a.*F(2:N+1,1)*rho);
+        % Terms in the oxygen equation
+             RO2a = (3.43-ya)/ya*mua(C(2:N+1,1),C(2:N+1,3));
+             RO2b = (1-fxi)*ba*muaO(C(2:N+1,3));
+             RO2n = (1.14-yn)/yn*mun(C(2:N+1,2),C(2:N+1,3));
+             RO2m = (1-fxi)*bn*munO(C(2:N+1,3));
+        RDEO2 = (dz/dO2)*((RO2a+RO2b).*F(2:N+1,1)*rho+(RO2n+RO2m).*F(2:N+1,2)*rho);
+        w = [RDENH4,RDENO2,RDEO2];
+end
+
+
+function w = biofilmbvp(C,S,F)
     %CNH4 = C(:,1); CNO2 = C(:,2); CNO3 = C(:,3); CO2 = C(:,4);
     %SNH4 = S(1); SNO2=S(2); SNO3 = S(3); L = S(7);
     %fa = F(:,1); fn = F(:,2); fi = F(:,3); 
     change = 1;
-      function w = RDE(C,S,F)
-        factor= S(6)^2/4;
-        RDENH4 = factor*mua(C(2:N+1,1),C(2:N+1,3)).*F(2:N+1,1)*rho/ya/dNH4;
-        RDENO2 = factor*(mun(C(2:N+1,2),C(2:N+1,3)).*F(2:N+1,2)*rho/yn-mua(C(2:N+1,1),C(2:N+1,3))*rho/ya.*F(2:N+1,1))/dNO2;
-        RDEO2 = factor/dO2*(((3.43-ya)/ya*mua(C(2:N+1,1),C(2:N+1,3))+(1+fxi)*ba*muaO(C(2:N+1,3))).*F(2:N+1,1)*rho+((1.14-yn)/yn*mun(C(2:N+1,2),C(2:N+1,3))+(1-fxi)*bn*munO(C(2:N+1,3))).*F(2:N+1,2)*rho);
-        w = [RDENH4,RDENO2,RDEO2];
-      end
     while change > tol
         CNew = RDE(C,S,F);
         CNH4new = [0;D2\CNew(:,1)]+S(1);
@@ -125,7 +143,7 @@ end
          d*(SNO2in-S(2))-1/V*(1/yn*mun(S(2),SO2)*S(4)-1/ya*mua(S(1),SO2)*S(3))-1/V*A*dNO2*JNO2(1);
          S(3)*(mua(S(1),SO2)-d-alpha)+A*rho*F(1,1)*E*S(6)^2;
          S(4)*(mun(S(2),SO2)-d-alpha)+A*rho*F(1,2)*E*S(6)^2;
-         (fxi+eta)*(S(3)*ba*muaO(SO2)+S(4)*bn*munO(SO2))-S(5)*(d+alpha)+A*rho*F(1,3)*E*S(6)^2;
+         mui(S(3),S(4),SO2)-S(5)*(d+alpha)+A*rho*F(1,3)*E*S(6)^2;
          Lp(C,S,F)];
     end
 %% Initial Conditions
@@ -143,7 +161,8 @@ end
   F = [fa,fn,fi];
   C = biofilmbvp(C,S,F);
 %% Set storage, preallocate size for speed
-SS = zeros(6,points); tt = zeros(1,points);
+SS = zeros(6,points); SS(:,1) = S(:);
+tt = zeros(1,points);
 fafa = zeros(N+1,points); fafa(:,1)=fa;
 fnfn = zeros(N+1,points); fnfn(:,1)=fn;
 fifi = zeros(N+1,points); fifi(:,1)=fi;
