@@ -6,7 +6,7 @@ function [tt,SS,CNH4C,CNO2C,CO2C,fafa,fnfn,fifi,x] = PartialNitritation_NO3(T,N)
 
 
 %% Parameters
-Ar = 0.17; d =5 ; rho = 10000;
+Ar = 0.17; d =0.5 ; rho = 10000;
 V = 0.006; alpha = 1; E = 1000;
 Ac = 0.0068; nc=50; A = Ar+Ac*nc;
 kaO2 = 0.5; knO2 = 0.5;
@@ -18,7 +18,7 @@ SNO2in = 0;
 SNH4in = 30; SO2in = 5;
 fxi = 0.1;  eta = 0.5;
 ba = 0.04; bn = 0.08;
-ia = 0.07; ii = 0.02;
+ia = 0; ii = 0;
 
 
 %% Discretization of domain; 
@@ -26,7 +26,7 @@ ia = 0.07; ii = 0.02;
 Dx= D; Dx(N+1,:) = zeros(N+1,1);                          % For the Neumann B.C. x(end) -> z=0
 D2 = D^2; D2(N+1,:) = D(N+1,:); D2 = D2(2:N+1,2:N+1);   % Also for the Neumann B.C.
 eps = 0.01; %dt = min([10e-6,N^(-4)/eps]);                 % timestep dependent on N
-dt=0.005;
+dt=0.001;
 t=0;
 % Chebyshev integration matrix:
 % Sl is the indefinite integral from x to 1,
@@ -40,12 +40,11 @@ tplot = T/points;               % plot times
 nplots = round(tmax/dt);        % # of iterations for timestepping
 plotgap = round(tplot/dt);      % Gap between saving points for plotting
 dt = tplot/plotgap;             % Timestep
-tol = 1E-12;                     % Tolerance for the BVP
+tol = 1E-9;                     % Tolerance for the BVP
 
 %% Exponential time differencing setup
 % For Transport PDE
     M = 32; r = 15*exp(1i*pi*((1:M)-.5)/M); h=dt;
-    A1 = h*zeros(N+1); E1 = eye(N+1); E2 = eye(N+1);
     I = eye(N+1); Z = zeros(N+1);
     fU1 = Z; fU2 = Z; fU3= Z; QU = Z;
     for j = 1:M
@@ -111,21 +110,104 @@ function w = RDE(C,S,F)
         RDEO2 = (dz/dO2)*((RO2a+RO2b).*F(2:N+1,1)*rho+(RO2n+RO2m).*F(2:N+1,2)*rho);
         w = [RDENH4,RDENO2,RDEO2];
 end
-
-
+%% QR decomposition;
+    function [Q,R] = qrdelete(Q,R)
+        m = size(R,1);
+        n = size(Q,1);
+        for kk = 1:m-1;
+            temp = sqrt(R(kk,kk+1)^2+R(kk+1,kk+1));
+            c = R(kk,kk+1)/temp; s = R(kk+1,kk+1)/temp;
+            R(kk,kk+1)=temp; R(kk+1,kk+1)=0;
+            if kk <m-1;
+                for jj = kk+2:m;
+                    temp = c*R(kk+1,jj)+s*R(kk+1,jj);
+                    R(kk+1,jj)=-s*R(kk,jj)+c*R(kk+1,jj);
+                    R(kk,jj)=temp;
+                end
+            end
+            for ll=1:n
+                temp = c*Q(ll,kk)+s*Q(ll,kk+1);
+                Q(ll,kk+1)=-s*Q(ll,kk)+c*Q(ll,kk+1);
+                Q(kk,ll) = temp;
+            end
+        end
+        Q=Q(:,1:m-1); R =R(1:m-1,2:m);
+    end
+%% Fixed point iteration using Andersen Acceleration 
 function w = biofilmbvp(C,S,F)
     %CNH4 = C(:,1); CNO2 = C(:,2); CNO3 = C(:,3); CO2 = C(:,4);
     %SNH4 = S(1); SNO2=S(2); SNO3 = S(3); L = S(7);
     %fa = F(:,1); fn = F(:,2); fi = F(:,3); 
-    change = 1;
+    change = 1; maa= 0; l= 0;
+    mmax=8; GNH4 =[]; GNO2=[]; GO2=[];
     while change > tol
-        CNew = RDE(C,S,F);
-        CNH4new = [0;D2\CNew(:,1)]+S(1);
-        CNO2new = [0;D2\CNew(:,2)]+S(2);
-        CO2new = [0;D2\CNew(:,3)]+SO2;
-        change = norm(C-[CNH4new,CNO2new,CO2new],inf);
-        C = [CNH4new,CNO2new,CO2new];
-    end
+        l = l+1;
+        Gtemp = RDE(C,S,F);
+        GNH4new = [0;D2\Gtemp(:,1)]+S(1);
+        GNO2new = [0;D2\Gtemp(:,2)]+S(2);
+        GO2new = [0;D2\Gtemp(:,3)]+SO2;
+        Gnew = [GNH4new,GNO2new,GO2new];
+        Fnew = Gnew-C; FNH4new=GNH4new-C(:,1);
+        FNO2new=GNO2new-C(:,2); FO2new=GO2new-C(:,3);
+         if l > 1
+             deltaFNH4 = FNH4new-FNH4old; deltaGNH4 = GNH4new-GNH4old;
+             deltaFNO2 = FNO2new-FNO2old; deltaGNO2 = GNO2new-GNO2old;
+             deltaFO2 = FO2new-FO2old; deltaGO2=GO2new-GO2old;
+             if maa<mmax
+                 GNH4 = [GNH4,deltaGNH4];
+                 GNO2 = [GNO2,deltaGNO2];
+                 GO2 = [GO2,deltaGO2];
+             else
+                 GNH4 = [GNH4(:,2:maa),deltaGNH4];
+                 GNO2 = [GNO2(:,2:maa),deltaGNO2];
+                 GO2 = [GO2(:,2:maa),deltaGO2];
+             end
+             maa=maa+1;
+         end
+         FNH4old=FNH4new; FNO2old=FNO2new;
+         FO2old = FO2new; Fold = Fnew;
+         GNH4old = GNH4new; GNO2old= GNO2new;
+         GO2old = GO2new; Gold = Gnew;
+         if maa == 0
+             Cnew = Gnew;
+         else
+             if maa==1
+                 QNH4(:,1) = deltaFNH4/norm(deltaFNH4);
+                 RNH4(1,1) = norm(deltaFNH4);
+                 QNO2(:,1) = deltaFNO2/norm(deltaFNO2);
+                 RNO2(1,1) = norm(deltaFNO2);
+                 QO2(:,1) = deltaFO2/norm(deltaFO2);
+                 RO2(1,1) = norm(deltaFO2);
+             else
+                 if maa>mmax
+                     [QNH4,RNH4] = qrdelete(QNH4,RNH4);
+                     [QNO2,RNO2] = qrdelete(QNO2,RNO2);
+                     [QO2,RO2] = qrdelete(QO2,RO2);
+                     maa = maa-1;
+                 end
+                 for kk = 1:maa-1
+                     RNH4(kk,maa) = QNH4(:,kk)'*deltaFNH4;
+                     RNO2(kk,maa) = QNO2(:,kk)'*deltaFNO2;
+                     RO2(kk,maa) = QO2(:,kk)'*deltaFO2;
+                     deltaFNH4 = deltaFNH4-RNH4(kk,maa)*QNH4(:,kk);
+                     deltaFNO2 = deltaFNO2-RNO2(kk,maa)*QNO2(:,kk);
+                     deltaFO2 = deltaFO2-RO2(kk,maa)*QO2(:,kk);
+                 end
+                 QNH4(:,maa) = deltaFNH4/norm(deltaFNH4);
+                 RNH4(maa,maa) = norm(deltaFNH4);
+                 QNO2(:,maa) = deltaFNO2/norm(deltaFNO2);
+                 RNO2(maa,maa) = norm(deltaFNO2);
+                 QO2(:,maa) = deltaFO2/norm(deltaFO2);
+                 RO2(maa,maa) = norm(deltaFO2);                    
+             end
+           gammaNH4 = RNH4\(QNH4')*FNH4new;
+           gammaNO2 = RNO2\(QNO2')*FNO2new;
+           gammaO2 = RO2\(QO2')*FO2new;
+           Cnew = [GNH4new-GNH4*gammaNH4,GNO2new-GNO2*gammaNO2,GO2new-GO2*gammaO2];          
+         end
+         change = norm(Cnew-C,inf);
+         C = Cnew;
+        end
     w = C;
   end
 %% Transport Equations for Biofilm
@@ -145,15 +227,15 @@ function w = biofilmbvp(C,S,F)
     %Xa = S(3); Xn = S(4); Xi = S(5); L = S(6);
     %fa = F(:,1); fn = F(:,2); fi = F(:,3);
     % Biofilm Velocity and Flux Equations
-    JNH4 = S(6)/2*rho*int*(mua(C(:,1),C(:,3)).*F(:,1)/ya)/dNH4; 
-    JNO2 = S(6)/2*rho*int*(mun(C(:,2),C(:,3)).*F(:,2)/yn-mua(C(:,1),C(:,3)).*F(:,1)/ya)/dNO2;
+    JNH4 = S(6)/2*rho*int*(mua(C(:,1),C(:,3)).*F(:,1)/ya); 
+    JNO2 = S(6)/2*rho*int*(mun(C(:,2),C(:,3)).*F(:,2)/yn-mua(C(:,1),C(:,3)).*F(:,1)/ya);
     % Pieces of SNH4 Equation
         RNH4a =(1/ya+ia)*mua(S(1),SO2); 
         RNH4b =(ia-ii*fxi)*muaO(SO2);
         RNH4n =ia*mun(S(2),SO2);
         RNH4m =(ia-ii*fxi)*munO(SO2);
-    w = [d*(SNH4in-S(1))-1/V*((RNH4a-RNH4b)*S(3)+(RNH4n-RNH4m)*S(4))-1/V*A*dNH4*JNH4(1);
-         d*(SNO2in-S(2))-1/V*(1/yn*mun(S(2),SO2)*S(4)-1/ya*mua(S(1),SO2)*S(3))-1/V*A*dNO2*JNO2(1);
+    w = [d*(SNH4in-S(1))-1/V*((RNH4a-RNH4b)*S(3)+(RNH4n-RNH4m)*S(4))-1/V*A*JNH4(1);
+         d*(SNO2in-S(2))-1/V*(1/yn*mun(S(2),SO2)*S(4)-1/ya*mua(S(1),SO2)*S(3))-1/V*A*JNO2(1);
          S(3)*(Rxa(S(1),SO2)-d-alpha)+A*rho*F(1,1)*E*S(6)^2;
          S(4)*(Rxn(S(2),SO2)-d-alpha)+A*rho*F(1,2)*E*S(6)^2;
          mui(S(3),S(4),SO2)-S(5)*(d+alpha)+A*rho*F(1,3)*E*S(6)^2;
@@ -203,7 +285,7 @@ reverseStr = '';
         NSc = planktonic(C,cs,cu);
         Nc = transport(C,cs,cu);
         S = S+FS1*NSu+2*FS2*(NSa+NSb)+FS3*NSc;
-        F = E1*F+fU1*Nu+2*fU2*(Na+Nb)+fU3*Nc;
+        F = F+fU1*Nu+2*fU2*(Na+Nb)+fU3*Nc;
     end
         
         
