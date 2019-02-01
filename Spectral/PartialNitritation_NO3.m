@@ -77,6 +77,8 @@ Rxa = @(y,z) mua(y,z)-muamax*(1+eta)*ba*muaO(z); % Called mu_a in the paper
 Rxn = @(y,z) mun(y,z)-munmax*(1+eta)*bn*munO(z); % Called mu_n in the paper
 mui = @(xa,xn,y) (fxi+eta)*(ba*xa.*muaO(y)+bn*xn.*munO(y)); % Reaction term in inert biomass equation
 Rf = @(C,F) F(:,1).*Rxa(C(:,1),C(:,3))+F(:,2).*Rxn(C(:,2),C(:,3))+mui(F(:,1),F(:,2),C(:,3)); % Sum of biomass reactions
+
+
 %% Biofilm Velocities and transport flux
 function w = v(C,~,F) % biofilm velocity 
     w = int*(Rf(C,F));
@@ -91,13 +93,13 @@ function w = RDE(C,S,F)
         % Factor from change of variables
         dz= S(6)^2/4;
         % Terms in NH4 equation
-            RNH4a = (1/ya+ia)*mua(C(2:N+1,1),C(2:N+1,3));
-            RNH4b = (ia-ii*fxi)*ba*muaO(C(2:N+1,3));
-            RNH4n = ia*mun(C(2:N+1,2),C(2:N+1,3));
-            RNH4m = (ia-ii*fxi)*bn*munO(C(2:N+1,3));
-        RDENH4 =  (dz/dNH4)*((RNH4a-RNH4b).*F(2:N+1,1)*rho+(RNH4n-RNH4m).*F(2:N+1,2)*rho);
+%             RNH4a = (1/ya+ia)*mua(C(2:N+1,1),C(2:N+1,3));
+%             RNH4b = (ia-ii*fxi)*ba*muaO(C(2:N+1,3));
+%             RNH4n = ia*mun(C(2:N+1,2),C(2:N+1,3));
+%             RNH4m = (ia-ii*fxi)*bn*munO(C(2:N+1,3));
+%         RDENH4 =  (dz/dNH4)*((RNH4a-RNH4b).*F(2:N+1,1)*rho+(RNH4n-RNH4m).*F(2:N+1,2)*rho);
         % NH4 equation, no i_i's
-        % RDENH4 = (dz/dNH4)*(1/ya)*mua(C(2:N+1,
+         RDENH4 = (dz/dNH4)*(1/ya)*mua(C(2:N+1,1),C(2:N+1,3)).*F(2:N+1,1)*rho;
         % Terms in NO2 equation
             RNO2a = 1/ya*mua(C(2:N+1,1),C(2:N+1,3));
             RNO2n = 1/yn*mun(C(2:N+1,2),C(2:N+1,3));
@@ -139,7 +141,7 @@ function w = biofilmbvp(C,S,F)
     %SNH4 = S(1); SNO2=S(2); SNO3 = S(3); L = S(7);
     %fa = F(:,1); fn = F(:,2); fi = F(:,3); 
     change = 1; maa= 0; l= 0;
-    mmax=8; GNH4 =[]; GNO2=[]; GO2=[];
+    mmax=4; GNH4 =[]; GNO2=[]; GO2=[];
     while change > tol
         l = l+1;
         Gtemp = RDE(C,S,F);
@@ -228,13 +230,13 @@ function w = biofilmbvp(C,S,F)
     %fa = F(:,1); fn = F(:,2); fi = F(:,3);
     % Biofilm Velocity and Flux Equations
     JNH4 = S(6)/2*rho*int*(mua(C(:,1),C(:,3)).*F(:,1)/ya); 
-    JNO2 = S(6)/2*rho*int*(mun(C(:,2),C(:,3)).*F(:,2)/yn-mua(C(:,1),C(:,3)).*F(:,1)/ya);
+    JNO2 = S(6)/2*rho*int*(mun(C(:,2),C(:,3)).*F(:,2)/yn); % -mua(C(:,1),C(:,3)).*F(:,1)/ya);
     % Pieces of SNH4 Equation
-        RNH4a =(1/ya+ia)*mua(S(1),SO2); 
-        RNH4b =(ia-ii*fxi)*muaO(SO2);
-        RNH4n =ia*mun(S(2),SO2);
-        RNH4m =(ia-ii*fxi)*munO(SO2);
-    w = [d*(SNH4in-S(1))-1/V*((RNH4a-RNH4b)*S(3)+(RNH4n-RNH4m)*S(4))-1/V*A*JNH4(1);
+%         RNH4a =(1/ya+ia)*mua(S(1),SO2); 
+%         RNH4b =(ia-ii*fxi)*muaO(SO2);
+%         RNH4n =ia*mun(S(2),SO2);
+%         RNH4m =(ia-ii*fxi)*munO(SO2);
+    w = [d*(SNH4in-S(1))-1/V*(1/ya*mua(S(1),SO2)*S(3))-1/V*A*JNH4(1);
          d*(SNO2in-S(2))-1/V*(1/yn*mun(S(2),SO2)*S(4)-1/ya*mua(S(1),SO2)*S(3))-1/V*A*JNO2(1);
          S(3)*(Rxa(S(1),SO2)-d-alpha)+A*rho*F(1,1)*E*S(6)^2;
          S(4)*(Rxn(S(2),SO2)-d-alpha)+A*rho*F(1,2)*E*S(6)^2;
