@@ -6,7 +6,7 @@ function [tt,SS,CNH4C,CNO2C,CO2C,fafa,fnfn,fifi,x] = PartialNitritation_NO3(T,N)
 
 
 %% Parameters
-Ar = 0.17; d =0.5 ; rho = 10000;
+Ar = 0.17; d =50 ; rho = 10000;
 V = 0.006; alpha = 1; E = 1000;
 Ac = 0.0068; nc=50; A = Ar+Ac*nc;
 kaO2 = 0.5; knO2 = 0.5;
@@ -26,7 +26,7 @@ ia = 0; ii = 0;
 Dx= D; Dx(N+1,:) = zeros(N+1,1);                          % For the Neumann B.C. x(end) -> z=0
 D2 = D^2; D2(N+1,:) = D(N+1,:); D2 = D2(2:N+1,2:N+1);   % Also for the Neumann B.C.
 eps = 0.01; %dt = min([10e-6,N^(-4)/eps]);                 % timestep dependent on N
-dt=0.001;
+dt=0.0001;
 t=0;
 % Chebyshev integration matrix:
 % Sl is the indefinite integral from x to 1,
@@ -151,6 +151,10 @@ function w = biofilmbvp(C,S,F)
         Gnew = [GNH4new,GNO2new,GO2new];
         Fnew = Gnew-C; FNH4new=GNH4new-C(:,1);
         FNO2new=GNO2new-C(:,2); FO2new=GO2new-C(:,3);
+        if norm(Fnew,inf) < tol
+            w = Gnew;
+            break;
+        end
          if l > 1
              deltaFNH4 = FNH4new-FNH4old; deltaGNH4 = GNH4new-GNH4old;
              deltaFNO2 = FNO2new-FNO2old; deltaGNO2 = GNO2new-GNO2old;
@@ -207,7 +211,7 @@ function w = biofilmbvp(C,S,F)
            gammaO2 = RO2\(QO2')*FO2new;
            Cnew = [GNH4new-GNH4*gammaNH4,GNO2new-GNO2*gammaNO2,GO2new-GO2*gammaO2];          
          end
-         change = norm(Cnew-C,inf);
+         change = norm(C-Cnew,inf);
          C = Cnew;
         end
     w = C;
@@ -229,8 +233,8 @@ function w = biofilmbvp(C,S,F)
     %Xa = S(3); Xn = S(4); Xi = S(5); L = S(6);
     %fa = F(:,1); fn = F(:,2); fi = F(:,3);
     % Biofilm Velocity and Flux Equations
-    JNH4 = S(6)/2*rho*int*(mua(C(:,1),C(:,3)).*F(:,1)/ya); 
-    JNO2 = S(6)/2*rho*int*(mun(C(:,2),C(:,3)).*F(:,2)/yn); % -mua(C(:,1),C(:,3)).*F(:,1)/ya);
+    JNH4 = S(6)/2*int*(mua(C(:,1),C(:,3)).*F(:,1)*rho/ya); 
+    JNO2 = S(6)/2*int*(mun(C(:,2),C(:,3)).*F(:,2)*rho/yn-mua(C(:,1),C(:,3)).*F(:,1)*rho/ya);
     % Pieces of SNH4 Equation
 %         RNH4a =(1/ya+ia)*mua(S(1),SO2); 
 %         RNH4b =(ia-ii*fxi)*muaO(SO2);
@@ -294,10 +298,9 @@ reverseStr = '';
 %% Main Timestepping Loop
   for i = 1:nplots
     % Save into temporary Storage
-    t= t+dt;
-    Ct = biofilmbvp(C,S,F); 
-    [S,F] = timestep(Ct,S,F);
-    C = Ct;
+    t= t+dt; 
+    [S,F] = timestep(C,S,F);
+    C = biofilmbvp(C,S,F);
     %% Save the data sometimes 
     if mod(i,plotgap)==0
       j = i/plotgap+1;
