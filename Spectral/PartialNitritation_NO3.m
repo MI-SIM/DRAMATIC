@@ -6,7 +6,7 @@ function [tt,SS,CNH4C,CNO2C,CO2C,fafa,fnfn,fifi,x] = PartialNitritation_NO3(T,N)
 
 
 %% Parameters
-Ar = 0.17; d =50 ; rho = 10000;
+Ar = 0.17; d =0.5 ; rho = 10000;
 V = 0.006; alpha = 1; E = 1000;
 Ac = 0.0068; nc=50; A = Ar+Ac*nc;
 kaO2 = 0.5; knO2 = 0.5;
@@ -26,7 +26,7 @@ ia = 0; ii = 0;
 Dx= D; Dx(N+1,:) = zeros(N+1,1);                          % For the Neumann B.C. x(end) -> z=0
 D2 = D^2; D2(N+1,:) = D(N+1,:); D2 = D2(2:N+1,2:N+1);   % Also for the Neumann B.C.
 eps = 0.01; %dt = min([10e-6,N^(-4)/eps]);                 % timestep dependent on N
-dt=0.0001;
+dt=0.02;
 t=0;
 % Chebyshev integration matrix:
 % Sl is the indefinite integral from x to 1,
@@ -47,8 +47,8 @@ tol = 1E-9;                     % Tolerance for the BVP
     M = 32; r = 15*exp(1i*pi*((1:M)-.5)/M); h=dt;
     I = eye(N+1); Z = zeros(N+1);
     fU1 = Z; fU2 = Z; fU3= Z; QU = Z;
-    for j = 1:M
-        z = r(j);
+    for jk = 1:M
+        z = r(jk);
         zIA = inv(z*I);
         QU = QU+h*zIA*(exp(z/2)-1);
         fU1 = fU1+h*zIA*(-4-z+exp(z)*(4-3*z+z^2))/z^2;
@@ -58,8 +58,8 @@ tol = 1E-9;                     % Tolerance for the BVP
     fU1 = real(fU1/M); fU2 = real(fU2/M); fU3 = real(fU3/M); QU = real(QU/M);
 % For the ODEs:
     FS1 = 0; FS2=0; FS3=0; QS=0;
-    for j = 1:M
-        z = r(j);
+    for jk = 1:M
+        z = r(jk);
         zIA = 1/z;
         QS = QS +h*zIA*(exp(z/2)-1);
         FS1 = FS1+h*zIA*(-4-z+exp(z)*(4-3*z+z^2))/z^2;
@@ -112,16 +112,16 @@ function w = RDE(C,S,F)
         RDEO2 = (dz/dO2)*((RO2a+RO2b).*F(2:N+1,1)*rho+(RO2n+RO2m).*F(2:N+1,2)*rho);
         w = [RDENH4,RDENO2,RDEO2];
 end
-%% QR decomposition;
+%% QR delete;
     function [Q,R] = qrdelete(Q,R)
         m = size(R,1);
         n = size(Q,1);
-        for kk = 1:m-1;
-            temp = sqrt(R(kk,kk+1)^2+R(kk+1,kk+1));
+        for kk = 1:m-1
+            temp = sqrt(R(kk,kk+1)^2+R(kk+1,kk+1)^2);
             c = R(kk,kk+1)/temp; s = R(kk+1,kk+1)/temp;
             R(kk,kk+1)=temp; R(kk+1,kk+1)=0;
-            if kk <m-1;
-                for jj = kk+2:m;
+            if kk <m-1
+                for jj = kk+2:m
                     temp = c*R(kk+1,jj)+s*R(kk+1,jj);
                     R(kk+1,jj)=-s*R(kk,jj)+c*R(kk+1,jj);
                     R(kk,jj)=temp;
@@ -140,7 +140,7 @@ function w = biofilmbvp(C,S,F)
     %CNH4 = C(:,1); CNO2 = C(:,2); CNO3 = C(:,3); CO2 = C(:,4);
     %SNH4 = S(1); SNO2=S(2); SNO3 = S(3); L = S(7);
     %fa = F(:,1); fn = F(:,2); fi = F(:,3); 
-    change = 1; maa= 0; l= 0;
+    change = 1; maa= 0; l= 0; droptol = 10e-11;
     mmax=4; GNH4 =[]; GNO2=[]; GO2=[];
     while change > tol
         l = l+1;
@@ -206,9 +206,24 @@ function w = biofilmbvp(C,S,F)
                  QO2(:,maa) = deltaFO2/norm(deltaFO2);
                  RO2(maa,maa) = norm(deltaFO2);                    
              end
-           gammaNH4 = RNH4\(QNH4')*FNH4new;
-           gammaNO2 = RNO2\(QNO2')*FNO2new;
-           gammaO2 = RO2\(QO2')*FO2new;
+           if rcond(RNH4) > droptol
+               gammaNH4 = RNH4\(QNH4'*FNH4new);
+           else
+               [UNH4,S1NH4,VNH4] = svd(GNH4,'econ');
+               gammaNH4 = VNH4*inv(S1NH4)*UNH4'*FNH4new;
+           end
+           if rcond(RNO2) > droptol
+           gammaNO2 = RNO2\(QNO2'*FNO2new);
+           else
+               [UNO2,S1NO2,VNO2] = svd(GNO2,'econ');
+               gammaNO2 =VNO2*inv(S1NO2)*UNO2'*FNO2new;
+           end
+           if rcond(RO2) > droptol
+           gammaO2 = RO2\(QO2'*FO2new);
+           else
+               [UO2,S1O2,VO2] = svd(GO2,'econ');
+               gammaO2 = VO2*inv(S1O2)*UO2'*FO2new;
+           end
            Cnew = [GNH4new-GNH4*gammaNH4,GNO2new-GNO2*gammaNO2,GO2new-GO2*gammaO2];          
          end
          change = norm(C-Cnew,inf);
