@@ -23,10 +23,10 @@ ia = 0; ii = 0;
 
 %% Discretization of domain; 
 [D,x] = cheb(N);                                        % Chebyshev Differentiation Matrix
-Dx= D; Dx(N+1,:) = zeros(N+1,1);                          % For the Neumann B.C. x(end) -> z=0
+Dx= D; Dx(N+1,:) = zeros(N+1,1);                        % For the Neumann B.C. x(end) -> z=0
 D2 = D^2; D2(N+1,:) = D(N+1,:); D2 = D2(2:N+1,2:N+1);   % Also for the Neumann B.C.
-eps = 0.01; %dt = min([10e-6,N^(-4)/eps]);                 % timestep dependent on N
-dt=0.02;
+eps = 0.01; %dt = min([10e-6,N^(-4)/eps]);              % timestep dependent on N
+dt=0.001;
 t=0;
 % Chebyshev integration matrix:
 % Sl is the indefinite integral from x to 1,
@@ -35,7 +35,7 @@ t=0;
 
 
 %% Numerical Settings
-tmax= T; points=9000;           % Maxtime and number of save points.
+tmax= T; points=900;           % Maxtime and number of save points.
 tplot = T/points;               % plot times
 nplots = round(tmax/dt);        % # of iterations for timestepping
 plotgap = round(tplot/dt);      % Gap between saving points for plotting
@@ -44,16 +44,16 @@ tol = 1E-9;                     % Tolerance for the BVP
 
 %% Exponential time differencing setup
 % For Transport PDE
-    M = 32; r = 15*exp(1i*pi*((1:M)-.5)/M); h=dt;
+    M = 32; r = 15*exp(1i*pi*((1:M)-.5)/M);
     I = eye(N+1); Z = zeros(N+1);
     fU1 = Z; fU2 = Z; fU3= Z; QU = Z;
     for jk = 1:M
         z = r(jk);
         zIA = inv(z*I);
-        QU = QU+h*zIA*(exp(z/2)-1);
-        fU1 = fU1+h*zIA*(-4-z+exp(z)*(4-3*z+z^2))/z^2;
-        fU2 = fU2+h*zIA*(2+z+exp(z)*(z-2))/z^2;
-        fU3 = fU3+h*zIA*(-4-3*z-z*2+exp(z)*(4-z))/z^2;
+        QU = QU+dt*zIA*(exp(z/2)-1);
+        fU1 = fU1+dt*zIA*(-4-z+exp(z)*(4-3*z+z^2))/z^2;
+        fU2 = fU2+dt*zIA*(2+z+exp(z)*(z-2))/z^2;
+        fU3 = fU3+dt*zIA*(-4-3*z-z*2+exp(z)*(4-z))/z^2;
     end
     fU1 = real(fU1/M); fU2 = real(fU2/M); fU3 = real(fU3/M); QU = real(QU/M);
 % For the ODEs:
@@ -61,10 +61,10 @@ tol = 1E-9;                     % Tolerance for the BVP
     for jk = 1:M
         z = r(jk);
         zIA = 1/z;
-        QS = QS +h*zIA*(exp(z/2)-1);
-        FS1 = FS1+h*zIA*(-4-z+exp(z)*(4-3*z+z^2))/z^2;
-        FS2 = FS2+h*zIA*(2+z+exp(z)*(z-2))/z^2;
-        FS3 = FS3+h*zIA*(-4-3*z-z*2+exp(z)*(4-z))/z^2;
+        QS = QS +dt*zIA*(exp(z/2)-1);
+        FS1 = FS1+dt*zIA*(-4-z+exp(z)*(4-3*z+z^2))/z^2;
+        FS2 = FS2+dt*zIA*(2+z+exp(z)*(z-2))/z^2;
+        FS3 = FS3+dt*zIA*(-4-3*z-z*2+exp(z)*(4-z))/z^2;
     end
     FS1 = real(FS1/M); FS2 = real(FS2/M); FS3 = real(FS3/M); QS=real(QS/M);
 
@@ -89,17 +89,16 @@ function w = Lp(C,S,F) % L prime
 end
 %% Biofilm Substrate Update Function
 % Biofilm Substrate equations
-function w = RDE(C,S,F)
-        % Factor from change of variables
-        dz= S(6)^2/4;
+function w = RDE(C,~,F)
+             dz = (S(6)/2)^2;
         % Terms in NH4 equation
-%             RNH4a = (1/ya+ia)*mua(C(2:N+1,1),C(2:N+1,3));
-%             RNH4b = (ia-ii*fxi)*ba*muaO(C(2:N+1,3));
-%             RNH4n = ia*mun(C(2:N+1,2),C(2:N+1,3));
-%             RNH4m = (ia-ii*fxi)*bn*munO(C(2:N+1,3));
-%         RDENH4 =  (dz/dNH4)*((RNH4a-RNH4b).*F(2:N+1,1)*rho+(RNH4n-RNH4m).*F(2:N+1,2)*rho);
+             RNH4a = (1/ya+ia)*mua(C(2:N+1,1),C(2:N+1,3));
+             RNH4b = (ia-ii*fxi)*ba*muaO(C(2:N+1,3));
+             RNH4n = ia*mun(C(2:N+1,2),C(2:N+1,3));
+             RNH4m = (ia-ii*fxi)*bn*munO(C(2:N+1,3));
+         RDENH4 =  (dz/dNH4)*((RNH4a-RNH4b).*F(2:N+1,1)*rho+(RNH4n-RNH4m).*F(2:N+1,2)*rho);
         % NH4 equation, no i_i's
-         RDENH4 = (dz/dNH4)*(1/ya)*mua(C(2:N+1,1),C(2:N+1,3)).*F(2:N+1,1)*rho;
+%         RDENH4 = (1/dNH4)*(1/ya)*mua(C(2:N+1,1),C(2:N+1,3)).*F(2:N+1,1)*rho;
         % Terms in NO2 equation
             RNO2a = 1/ya*mua(C(2:N+1,1),C(2:N+1,3));
             RNO2n = 1/yn*mun(C(2:N+1,2),C(2:N+1,3));
@@ -248,17 +247,21 @@ function w = biofilmbvp(C,S,F)
     %Xa = S(3); Xn = S(4); Xi = S(5); L = S(6);
     %fa = F(:,1); fn = F(:,2); fi = F(:,3);
     % Biofilm Velocity and Flux Equations
-    JNH4 = S(6)/2*int*(mua(C(:,1),C(:,3)).*F(:,1)*rho/ya); 
-    JNO2 = S(6)/2*int*(mun(C(:,2),C(:,3)).*F(:,2)*rho/yn-mua(C(:,1),C(:,3)).*F(:,1)*rho/ya);
+         JNH4a = (1/ya+ia)*mua(C(:,1),C(:,3));
+         JNH4b = (ia-ii*fxi)*muaO(C(:,3));
+         JNH4n = ia*mun(C(:,2),C(:,3));
+         JNH4m = (ia-ii*fxi)*munO(C(:,3));
+    JNH4 = (2/S(6))*int*((JNH4a-JNH4b).*F(:,1)*rho+(JNH4n-JNH4m).*F(:,2)*rho);
+    JNO2 = (2/S(6))*int*(mun(C(:,2),C(:,3)).*F(:,2)*rho/yn-mua(C(:,1),C(:,3)).*F(:,1)*rho/ya);
     % Pieces of SNH4 Equation
-%         RNH4a =(1/ya+ia)*mua(S(1),SO2); 
-%         RNH4b =(ia-ii*fxi)*muaO(SO2);
-%         RNH4n =ia*mun(S(2),SO2);
-%         RNH4m =(ia-ii*fxi)*munO(SO2);
-    w = [d*(SNH4in-S(1))-1/V*(1/ya*mua(S(1),SO2)*S(3))-1/V*A*JNH4(1);
+         RNH4a =(1/ya+ia)*mua(S(1),SO2); 
+         RNH4b =(ia-ii*fxi)*muaO(SO2);
+         RNH4n =ia*mun(S(2),SO2);
+         RNH4m =(ia-ii*fxi)*munO(SO2);
+    w = [d*(SNH4in-S(1))-1/V*((RNH4a-RNH4b)*S(3)+(RNH4n-RNH4m)*S(4))-1/V*A*JNH4(1);
          d*(SNO2in-S(2))-1/V*(1/yn*mun(S(2),SO2)*S(4)-1/ya*mua(S(1),SO2)*S(3))-1/V*A*JNO2(1);
-         S(3)*(Rxa(S(1),SO2)-d-alpha)+A*rho*F(1,1)*E*S(6)^2;
-         S(4)*(Rxn(S(2),SO2)-d-alpha)+A*rho*F(1,2)*E*S(6)^2;
+         S(3)*Rxa(S(1),SO2)-(d+alpha)*S(3)+A*rho*F(1,1)*E*S(6)^2;
+         S(4)*Rxn(S(2),SO2)-(d+alpha)*S(4)+A*rho*F(1,2)*E*S(6)^2;
          mui(S(3),S(4),SO2)-S(5)*(d+alpha)+A*rho*F(1,3)*E*S(6)^2;
          Lp(C,S,F)];
     end

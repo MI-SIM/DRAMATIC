@@ -1,6 +1,6 @@
 
 T =90; %Maximum time
-N = 16; %Number of Chebyshev points
+N = 32; %Number of Chebyshev points
 
 [t,S,CNH4,CNO2,CO2,fa,fn,fi,x] = PartialNitritation_NO3(T,N);
 
