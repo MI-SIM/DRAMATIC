@@ -6,7 +6,7 @@ function [tt,SS,CNH4C,CNO2C,CO2C,fafa,fnfn,fifi,x] = PartialNitritation_NO3(T,N)
 
 
 %% Parameters
-Ar = 0.17; d =0.5 ; rho = 10000;
+Ar = 0.17; d =5 ; rho = 10000;
 V = 0.006; alpha = 1; E = 1000;
 Ac = 0.0068; nc=50; A = Ar+Ac*nc;
 kaO2 = 0.5; knO2 = 0.5;
@@ -26,7 +26,7 @@ ia = 0; ii = 0;
 Dx= D; Dx(N+1,:) = zeros(N+1,1);                          % For the Neumann B.C. x(end) -> z=0
 D2 = D^2; D2(N+1,:) = D(N+1,:); D2 = D2(2:N+1,2:N+1);   % Also for the Neumann B.C.
 eps = 0.01; %dt = min([10e-6,N^(-4)/eps]);                 % timestep dependent on N
-dt=0.02;
+dt=0.0001;
 t=0;
 % Chebyshev integration matrix:
 % Sl is the indefinite integral from x to 1,
@@ -40,7 +40,7 @@ tplot = T/points;               % plot times
 nplots = round(tmax/dt);        % # of iterations for timestepping
 plotgap = round(tplot/dt);      % Gap between saving points for plotting
 dt = tplot/plotgap;             % Timestep
-tol = 1E-9;                     % Tolerance for the BVP
+tol = 1E-7;                     % Tolerance for the BVP
 
 %% Exponential time differencing setup
 % For Transport PDE
@@ -140,7 +140,7 @@ function w = biofilmbvp(C,S,F)
     %CNH4 = C(:,1); CNO2 = C(:,2); CNO3 = C(:,3); CO2 = C(:,4);
     %SNH4 = S(1); SNO2=S(2); SNO3 = S(3); L = S(7);
     %fa = F(:,1); fn = F(:,2); fi = F(:,3); 
-    change = 1; maa= 0; l= 0; droptol = 10e-11;
+    change = 1; maa= 0; l= 0; droptol = 10e-13;
     mmax=4; GNH4 =[]; GNO2=[]; GO2=[];
     while change > tol
         l = l+1;
@@ -206,27 +206,32 @@ function w = biofilmbvp(C,S,F)
                  QO2(:,maa) = deltaFO2/norm(deltaFO2);
                  RO2(maa,maa) = norm(deltaFO2);                    
              end
-           if rcond(RNH4) > droptol
-               gammaNH4 = RNH4\(QNH4'*FNH4new);
-           else
-               [UNH4,S1NH4,VNH4] = svd(GNH4,'econ');
-               gammaNH4 = VNH4*inv(S1NH4)*UNH4'*FNH4new;
+           Condt = [rcond(RNH4);rcond(RNO2);rcond(RO2)];
+           while maa>1 && any(Condt < droptol)
+             [QNH4,RNH4] = qrdelete(QNH4,RNH4);
+             [QNO2,RNO2] = qrdelete(QNO2,RNO2);
+             [QO2,RO2] = qrdelete(QO2,RO2);
+             GNH4 = GNH4(:,2:maa);
+             GNO2 = GNO2(:,2:maa);
+             GO2 = GO2(:,2:maa);
+             if size(RNH4,1) ~= size(RNH4,2)
+                QNH4 = QNH4(:,1:mAA); RNH4 = RNH4(1:mAA,:);
+             end
+             if size(RNO2,1) ~= size(RNO2,2)
+                QNO2 = QNO2(:,1:mAA); RNO2 = RNO2(1:mAA,:);
+             end
+             if size(RO2,1) ~= size(RO2,2)
+                QO2 = QO2(:,1:mAA); RO2 = RO2(1:mAA,:);
+             end
+             maa=maa-1;
+             Condt = [rcond(RNH4);rcond(RNO2);rcond(RO2)];
            end
-           if rcond(RNO2) > droptol
+           gammaNH4 = RNH4\(QNH4'*FNH4new);
            gammaNO2 = RNO2\(QNO2'*FNO2new);
-           else
-               [UNO2,S1NO2,VNO2] = svd(GNO2,'econ');
-               gammaNO2 =VNO2*inv(S1NO2)*UNO2'*FNO2new;
-           end
-           if rcond(RO2) > droptol
            gammaO2 = RO2\(QO2'*FO2new);
-           else
-               [UO2,S1O2,VO2] = svd(GO2,'econ');
-               gammaO2 = VO2*inv(S1O2)*UO2'*FO2new;
-           end
            Cnew = [GNH4new-GNH4*gammaNH4,GNO2new-GNO2*gammaNO2,GO2new-GO2*gammaO2];          
          end
-         change = norm(C-Cnew,inf);
+         change = norm(C-Cnew);
          C = Cnew;
         end
     w = C;
@@ -236,9 +241,10 @@ function w = biofilmbvp(C,S,F)
     % Transport equations
             vel = v(C,S,F);
             vp = Rf(C,F);
-            fat = F(:,1).*Rxa(C(:,1),C(:,3))-F(:,1).*vp+(x-1)*(Lp(C,S,F)/S(6)).*Dx*F(:,1)-vel.*(Dx*F(:,1));
-            fnt = F(:,2).*Rxn(C(:,2),C(:,3))-F(:,2).*vp+(x-1)*(Lp(C,S,F)/S(6)).*Dx*F(:,2)-vel.*(Dx*F(:,2));
-            fit = mui(F(:,1),F(:,2),C(:,3))-F(:,3).*vp+(x-1)*(Lp(C,S,F)/S(6)).*Dx*F(:,3)-vel.*(Dx*F(:,3));
+            dz = (x+1)*(Lp(C,S,F)/S(6)).*Dx;
+            fat = F(:,1).*Rxa(C(:,1),C(:,3))-F(:,1).*vp-dz*F(:,1)-vel.*(Dx*F(:,1));
+            fnt = F(:,2).*Rxn(C(:,2),C(:,3))-F(:,2).*vp-dz*F(:,2)-vel.*(Dx*F(:,2));
+            fit = mui(F(:,1),F(:,2),C(:,3))-F(:,3).*vp-dz*F(:,3)-vel.*(Dx*F(:,3));
             w = [fat,fnt,fit];
         end
 %% Planktonic Equations
@@ -256,7 +262,7 @@ function w = biofilmbvp(C,S,F)
 %         RNH4n =ia*mun(S(2),SO2);
 %         RNH4m =(ia-ii*fxi)*munO(SO2);
     w = [d*(SNH4in-S(1))-1/V*(1/ya*mua(S(1),SO2)*S(3))-1/V*A*JNH4(1);
-         d*(SNO2in-S(2))-1/V*(1/yn*mun(S(2),SO2)*S(4)-1/ya*mua(S(1),SO2)*S(3))-1/V*A*JNO2(1);
+         d*(SNO2in-S(2))-1/V*1/yn*mun(S(2),SO2)*S(4)+1/(V*ya)*mua(S(1),SO2)*S(3)-1/V*A*JNO2(1);
          S(3)*(Rxa(S(1),SO2)-d-alpha)+A*rho*F(1,1)*E*S(6)^2;
          S(4)*(Rxn(S(2),SO2)-d-alpha)+A*rho*F(1,2)*E*S(6)^2;
          mui(S(3),S(4),SO2)-S(5)*(d+alpha)+A*rho*F(1,3)*E*S(6)^2;
@@ -266,8 +272,8 @@ function w = biofilmbvp(C,S,F)
 % Planktonic
   SNO2 = SNO2in; SNH4 = SNH4in ;   % Substrates
   SO2 = SO2in ; %SNO3 = SNO3in;
-  Xa = 2E-6;  Xn = 2E-6; Xi = 0;  % Biomass
-  L = 1E-6;
+  Xa = 2E-5;  Xn = 2E-5; Xi = 0;  % Biomass
+  L = 1E-5;
   S = [SNH4;SNO2;Xa;Xn;Xi;L];
 % Biofilm
   CO2 = SO2*ones(size(x));   CNO2 = SNO2*ones(size(x));
