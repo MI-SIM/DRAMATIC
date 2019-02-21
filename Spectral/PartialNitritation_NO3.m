@@ -141,7 +141,7 @@ function w = biofilmbvp(C,S,F)
     %SNH4 = S(1); SNO2=S(2); SNO3 = S(3); L = S(7);
     %fa = F(:,1); fn = F(:,2); fi = F(:,3); 
     change = 1; maa= 0; l= 0; droptol = 10e-13;
-    mmax=4; GNH4 =[]; GNO2=[]; GO2=[];
+    mmax=1; GNH4 =[]; GNO2=[]; GO2=[];
     while change > tol
         l = l+1;
         Gtemp = RDE(C,S,F);
@@ -254,14 +254,14 @@ function w = biofilmbvp(C,S,F)
     %Xa = S(3); Xn = S(4); Xi = S(5); L = S(6);
     %fa = F(:,1); fn = F(:,2); fi = F(:,3);
     % Biofilm Velocity and Flux Equations
-    JNH4 = S(6)/2*int*(mua(C(:,1),C(:,3)).*F(:,1)*rho/ya); 
-    JNO2 = S(6)/2*int*(mun(C(:,2),C(:,3)).*F(:,2)*rho/yn-mua(C(:,1),C(:,3)).*F(:,1)*rho/ya);
+    JNH4 = dNH4*2/S(6)*D*C(:,1); 
+    JNO2 = dNO2*2/S(6)*D*C(:,2);
     % Pieces of SNH4 Equation
-%         RNH4a =(1/ya+ia)*mua(S(1),SO2); 
-%         RNH4b =(ia-ii*fxi)*muaO(SO2);
-%         RNH4n =ia*mun(S(2),SO2);
-%         RNH4m =(ia-ii*fxi)*munO(SO2);
-    w = [d*(SNH4in-S(1))-1/V*(1/ya*mua(S(1),SO2)*S(3))-1/V*A*JNH4(1);
+         RNH4a =(1/ya+ia)*mua(S(1),SO2); 
+         RNH4b =(ia-ii*fxi)*muaO(SO2);
+         RNH4n =ia*mun(S(2),SO2);
+         RNH4m =(ia-ii*fxi)*munO(SO2);
+    w = [d*(SNH4in-S(1))-1/V*((RNH4a-RNH4b)*S(3)+(RNH4n-RNH4m)*S(4))-1/V*A*JNH4(1);
          d*(SNO2in-S(2))-1/V*1/yn*mun(S(2),SO2)*S(4)+1/(V*ya)*mua(S(1),SO2)*S(3)-1/V*A*JNO2(1);
          S(3)*(Rxa(S(1),SO2)-d-alpha)+A*rho*F(1,1)*E*S(6)^2;
          S(4)*(Rxn(S(2),SO2)-d-alpha)+A*rho*F(1,2)*E*S(6)^2;
