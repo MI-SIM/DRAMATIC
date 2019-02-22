@@ -29,7 +29,7 @@ D2 = D^2; D2(N+1,:) = D(N+1,:);       % Neumann B.C. at x=-1 (x(1))
 D2 = D2(2:N+1,2:N+1);                 % Dirichlet B.C at x=1 (x(end)) 
 
 %% Time stepping Settings
-dt = 5E-3; t = 0;                 % Timestep and Initial Time
+dt = 0.005; t = 0;                 % Timestep and Initial Time
 points = 900;                     % Number of points to save
 tplot = T/points;                 % time at which to plot
 nplots = round(T/dt);             % Number of total time points 
@@ -67,8 +67,8 @@ dt = tplot/plotgap;               % Adjusted timestep
     FS1 = real(FS1/M); FS2 = real(FS2/M); FS3 = real(FS3/M); QS=real(QS/M);
     
 %% Uptake and growth functions
-mu1 = @(y) mu1max*y./(k1+y);
-mu2 = @(y) mu2max*y./(k2+y);
+mu1 = @(y) mu1max*y./(k1+y.^2);
+mu2 = @(y) mu2max*y./(k2+y.^2);
 function w = vel(C,S,F)
     w = S(4)/2*int*(F(:,1).*mu1(C)+F(:,2).*mu2(C));
 end
@@ -99,12 +99,12 @@ end
 %% Biofilm Concentration Equations
 function w = BVP(C,S,F)
     DC = S(4)^2/4*(mu1(C(1:N)).*F(1:N,1)+mu2(C(1:N)).*F(1:N,2))/diffuse_C;
-    w = [0;D2\DC] +S(1);
+    w = [0;D2\DC]+S(1);
 end
 
 %% Solve Boundary value problem
 % Boundary value numerical parameters
-tol = 1E-9;
+tol = 1E-5;
 % Simple fixed point solver for the BVP
 function w = BVPSolve(C,S,F)
     change = 1; 

@@ -1,7 +1,7 @@
 %% Model_Comp.m
 
-N = 32;
-T = 90;
+N = 16;
+T = 5000;
 
 [t,x,S,C,f1,f2] = competition(T,N);
 
